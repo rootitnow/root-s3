@@ -1,0 +1,293 @@
+use anyhow::Result;
+use aws_credential_types::{provider::SharedCredentialsProvider, Credentials};
+use aws_sdk_s3::{
+    operation::{
+        create_bucket::{CreateBucketError, CreateBucketOutput},
+        delete_bucket::{DeleteBucketError, DeleteBucketOutput},
+        delete_object::{DeleteObjectError, DeleteObjectOutput},
+        get_object::{GetObjectError, GetObjectOutput},
+        list_buckets::{ListBucketsError, ListBucketsOutput},
+        list_objects_v2::{ListObjectsV2Error, ListObjectsV2Output},
+        put_object::{PutObjectError, PutObjectOutput},
+    },
+    types::BucketLocationConstraint,
+    types::CreateBucketConfiguration,
+    Client,
+};
+use aws_types::{region::Region, SdkConfig};
+use http::header;
+use thiserror::Error;
+
+/// RootS3Client struct represents a client for interacting with the S3 service of root.
+pub struct RootS3Client {
+    /// API key for authentication.
+    pub api_key: String,
+    /// Project ID for identifying the project.
+    pub project_id: i32,
+    /// S3 client from AWS SDK.
+    pub s3_client: Client,
+}
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("Invalid url")]
+    InvalidUrl,
+    #[error("Failed to create bucket: {0}")]
+    ErrCreateBucket(Box<CreateBucketError>),
+    #[error("Failed to delete bucket: {0}")]
+    ErrDeleteBucket(Box<DeleteBucketError>),
+    #[error("Failed to list buckets: {0}")]
+    ErrListBuckets(Box<ListBucketsError>),
+    #[error("Failed to put object: {0}")]
+    ErrPutObject(Box<PutObjectError>),
+    #[error("Failed to get object: {0}")]
+    ErrGetObject(Box<GetObjectError>),
+    #[error("Failed to delete object: {0}")]
+    ErrDeleteObject(Box<DeleteObjectError>),
+    #[error("Failed to list objects: {0}")]
+    ErrListObjects(Box<ListObjectsV2Error>),
+}
+
+impl<'a> RootS3Client {
+    /// Creates a new `RootS3Client`.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The base URL for the S3 service.
+    /// * `api_key` - The API key for authentication.
+    /// * `project_id` - The project ID for identifying the project.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the initialized `RootS3Client` or an `Error` if the URL is invalid.
+    pub fn new(url: impl Into<&'a str>, api_key: String, project_id: i32) -> Result<Self, Error> {
+        let s3_client = get_s3_client(url.into()).map_err(|_| Error::InvalidUrl)?;
+        Ok(Self {
+            api_key,
+            project_id,
+            s3_client,
+        })
+    }
+}
+
+pub fn get_s3_client(url: &str) -> Result<Client> {
+    let cred = Credentials::new("", "", None, None, "");
+    let scred = SharedCredentialsProvider::new(cred);
+
+    let url = format!("{}/api/v1/s3", url);
+
+    let client = Client::new(
+        &SdkConfig::builder()
+            .endpoint_url(url)
+            .region(Region::new("eu-central-1"))
+            .credentials_provider(scred)
+            .build(),
+    );
+
+    Ok(client)
+}
+
+impl RootS3Client {
+    pub async fn create_bucket(&self, bucket: String) -> Result<CreateBucketOutput, Error> {
+        let cfg = CreateBucketConfiguration::builder()
+            .location_constraint(BucketLocationConstraint::from("eu-central-2"))
+            .build();
+
+        let api_key = self.api_key.clone();
+        let project_id = self.project_id;
+
+        let res = self
+            .s3_client
+            .create_bucket()
+            .create_bucket_configuration(cfg)
+            .bucket(bucket.clone())
+            .customize()
+            .await
+            .map_err(|e| Error::ErrCreateBucket(Box::new(e.into_service_error())))?
+            .mutate_request(move |req| {
+                req.headers_mut().append(
+                    "x-api-key",
+                    header::HeaderValue::from_str(&api_key).unwrap(),
+                );
+                let mut uri = req.uri_mut().to_string();
+                uri += format!("?project_id={}", &project_id).as_str();
+                *req.uri_mut() = uri.parse().unwrap();
+            })
+            .send()
+            .await
+            .map_err(|e| Error::ErrCreateBucket(Box::new(e.into_service_error())))?;
+
+        Ok(res)
+    }
+
+    pub async fn delete_bucket(&self, bucket: String) -> Result<DeleteBucketOutput> {
+        let api_key = self.api_key.clone();
+        let project_id = self.project_id;
+
+        let res = self
+            .s3_client
+            .delete_bucket()
+            .bucket(bucket.clone())
+            .customize()
+            .await
+            .map_err(|e| Error::ErrDeleteBucket(Box::new(e.into_service_error())))?
+            .mutate_request(move |req| {
+                req.headers_mut().append(
+                    "x-api-key",
+                    header::HeaderValue::from_str(&api_key).unwrap(),
+                );
+                let mut uri = req.uri_mut().to_string();
+                uri += format!("?project_id={project_id}").as_str();
+                *req.uri_mut() = uri.parse().unwrap();
+            })
+            .send()
+            .await
+            .map_err(|e| Error::ErrDeleteBucket(Box::new(e.into_service_error())))?;
+
+        Ok(res)
+    }
+
+    pub async fn list_buckets(&self) -> Result<ListBucketsOutput> {
+        let api_key = self.api_key.clone();
+        let project_id = self.project_id;
+
+        let res = self
+            .s3_client
+            .list_buckets()
+            .customize()
+            .await
+            .map_err(|e| Error::ErrListBuckets(Box::new(e.into_service_error())))?
+            .mutate_request(move |req| {
+                req.headers_mut().append(
+                    "x-api-key",
+                    header::HeaderValue::from_str(&api_key).unwrap(),
+                );
+                let mut uri = req.uri_mut().to_string();
+                uri += format!("?project_id={project_id}").as_str();
+                *req.uri_mut() = uri.parse().unwrap();
+            })
+            .send()
+            .await
+            .map_err(|e| Error::ErrListBuckets(Box::new(e.into_service_error())))?;
+
+        Ok(res)
+    }
+
+    pub async fn put_object(
+        &self,
+        bucket: String,
+        key: String,
+        data: bytes::Bytes,
+    ) -> Result<PutObjectOutput> {
+        let api_key = self.api_key.clone();
+        let project_id = self.project_id;
+
+        let res = self
+            .s3_client
+            .put_object()
+            .key(key)
+            .body(data.into())
+            .bucket(bucket.clone())
+            .customize()
+            .await
+            .map_err(|e| Error::ErrPutObject(Box::new(e.into_service_error())))?
+            .mutate_request(move |req| {
+                req.headers_mut().append(
+                    "x-api-key",
+                    header::HeaderValue::from_str(&api_key).unwrap(),
+                );
+                let mut uri = req.uri_mut().to_string();
+                uri += format!("&project_id={project_id}").as_str();
+                *req.uri_mut() = uri.parse().unwrap();
+                log::debug!("put object req: {:?}", req);
+            })
+            .send()
+            .await
+            .map_err(|e| Error::ErrPutObject(Box::new(e.into_service_error())))?;
+
+        Ok(res)
+    }
+
+    pub async fn get_object(&self, bucket: String, key: String) -> Result<GetObjectOutput> {
+        let api_key = self.api_key.clone();
+        let project_id = self.project_id;
+
+        let res = self
+            .s3_client
+            .get_object()
+            .key(key.clone())
+            .bucket(bucket)
+            .customize()
+            .await
+            .map_err(|e| Error::ErrGetObject(Box::new(e.into_service_error())))?
+            .mutate_request(move |req| {
+                req.headers_mut().append(
+                    "x-api-key",
+                    header::HeaderValue::from_str(&api_key).unwrap(),
+                );
+                let mut uri = req.uri_mut().to_string();
+                uri += format!("&project_id={project_id}").as_str();
+                *req.uri_mut() = uri.parse().unwrap();
+            })
+            .send()
+            .await
+            .map_err(|e| Error::ErrGetObject(Box::new(e.into_service_error())))?;
+
+        Ok(res)
+    }
+
+    pub async fn delete_object(&self, bucket: &str, key: &str) -> Result<DeleteObjectOutput> {
+        let api_key = self.api_key.clone();
+        let project_id = self.project_id;
+
+        let res = self
+            .s3_client
+            .delete_object()
+            .key(key)
+            .bucket(bucket)
+            .customize()
+            .await
+            .map_err(|e| Error::ErrDeleteObject(Box::new(e.into_service_error())))?
+            .mutate_request(move |req| {
+                req.headers_mut().append(
+                    "x-api-key",
+                    header::HeaderValue::from_str(&api_key).unwrap(),
+                );
+                let mut uri = req.uri_mut().to_string();
+                uri += format!("&project_id={project_id}").as_str();
+                *req.uri_mut() = uri.parse().unwrap();
+            })
+            .send()
+            .await
+            .map_err(|e| Error::ErrDeleteObject(Box::new(e.into_service_error())))?;
+
+        Ok(res)
+    }
+
+    pub async fn list_objects(&self, bucket: &str) -> Result<ListObjectsV2Output> {
+        let api_key = self.api_key.clone();
+        let project_id = self.project_id;
+
+        let res = self
+            .s3_client
+            .list_objects_v2()
+            .bucket(bucket)
+            .customize()
+            .await
+            .map_err(|e| Error::ErrListObjects(Box::new(e.into_service_error())))?
+            .mutate_request(move |req| {
+                req.headers_mut().append(
+                    "x-api-key",
+                    header::HeaderValue::from_str(&api_key).unwrap(),
+                );
+                let mut uri = req.uri_mut().to_string();
+                uri += format!("&project_id={project_id}").as_str();
+                *req.uri_mut() = uri.parse().unwrap();
+            })
+            .send()
+            .await
+            .map_err(|e| Error::ErrListObjects(Box::new(e.into_service_error())))?;
+
+        Ok(res)
+    }
+}
