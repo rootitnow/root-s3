@@ -19,11 +19,10 @@ use http::header;
 use thiserror::Error;
 
 /// RootS3Client struct represents a client for interacting with the S3 service of root.
+#[derive(Debug, Clone)]
 pub struct RootS3Client {
     /// API key for authentication.
     pub api_key: String,
-    /// Project ID for identifying the project.
-    pub project_id: i32,
     /// S3 client from AWS SDK.
     pub s3_client: Client,
 }
@@ -60,13 +59,9 @@ impl<'a> RootS3Client {
     /// # Returns
     ///
     /// A Result containing the initialized `RootS3Client` or an `Error` if the URL is invalid.
-    pub fn new(url: impl Into<&'a str>, api_key: String, project_id: i32) -> Result<Self, Error> {
+    pub fn new(url: impl Into<&'a str>, api_key: String) -> Result<Self, Error> {
         let s3_client = get_s3_client(url.into()).map_err(|_| Error::InvalidUrl)?;
-        Ok(Self {
-            api_key,
-            project_id,
-            s3_client,
-        })
+        Ok(Self { api_key, s3_client })
     }
 }
 
@@ -88,19 +83,22 @@ pub fn get_s3_client(url: &str) -> Result<Client> {
 }
 
 impl RootS3Client {
-    pub async fn create_bucket(&self, bucket: String) -> Result<CreateBucketOutput, Error> {
+    pub async fn create_bucket(
+        &self,
+        bucket: &str,
+        project_id: i32,
+    ) -> Result<CreateBucketOutput, Error> {
         let cfg = CreateBucketConfiguration::builder()
             .location_constraint(BucketLocationConstraint::from("eu-central-2"))
             .build();
 
         let api_key = self.api_key.clone();
-        let project_id = self.project_id;
 
         let res = self
             .s3_client
             .create_bucket()
             .create_bucket_configuration(cfg)
-            .bucket(bucket.clone())
+            .bucket(bucket)
             .customize()
             .await
             .map_err(|e| Error::ErrCreateBucket(Box::new(e.into_service_error())))?
@@ -120,14 +118,17 @@ impl RootS3Client {
         Ok(res)
     }
 
-    pub async fn delete_bucket(&self, bucket: String) -> Result<DeleteBucketOutput> {
+    pub async fn delete_bucket(
+        &self,
+        bucket: &str,
+        project_id: i32,
+    ) -> Result<DeleteBucketOutput, Error> {
         let api_key = self.api_key.clone();
-        let project_id = self.project_id;
 
         let res = self
             .s3_client
             .delete_bucket()
-            .bucket(bucket.clone())
+            .bucket(bucket)
             .customize()
             .await
             .map_err(|e| Error::ErrDeleteBucket(Box::new(e.into_service_error())))?
@@ -147,9 +148,8 @@ impl RootS3Client {
         Ok(res)
     }
 
-    pub async fn list_buckets(&self) -> Result<ListBucketsOutput> {
+    pub async fn list_buckets(&self, project_id: i32) -> Result<ListBucketsOutput, Error> {
         let api_key = self.api_key.clone();
-        let project_id = self.project_id;
 
         let res = self
             .s3_client
@@ -175,19 +175,19 @@ impl RootS3Client {
 
     pub async fn put_object(
         &self,
-        bucket: String,
-        key: String,
+        bucket: &str,
+        key: &str,
         data: bytes::Bytes,
-    ) -> Result<PutObjectOutput> {
+        project_id: i32,
+    ) -> Result<PutObjectOutput, Error> {
         let api_key = self.api_key.clone();
-        let project_id = self.project_id;
 
         let res = self
             .s3_client
             .put_object()
             .key(key)
             .body(data.into())
-            .bucket(bucket.clone())
+            .bucket(bucket)
             .customize()
             .await
             .map_err(|e| Error::ErrPutObject(Box::new(e.into_service_error())))?
@@ -208,14 +208,18 @@ impl RootS3Client {
         Ok(res)
     }
 
-    pub async fn get_object(&self, bucket: String, key: String) -> Result<GetObjectOutput> {
+    pub async fn get_object(
+        &self,
+        bucket: &str,
+        key: &str,
+        project_id: i32,
+    ) -> Result<GetObjectOutput, Error> {
         let api_key = self.api_key.clone();
-        let project_id = self.project_id;
 
         let res = self
             .s3_client
             .get_object()
-            .key(key.clone())
+            .key(key)
             .bucket(bucket)
             .customize()
             .await
@@ -236,9 +240,13 @@ impl RootS3Client {
         Ok(res)
     }
 
-    pub async fn delete_object(&self, bucket: &str, key: &str) -> Result<DeleteObjectOutput> {
+    pub async fn delete_object(
+        &self,
+        bucket: &str,
+        key: &str,
+        project_id: i32,
+    ) -> Result<DeleteObjectOutput, Error> {
         let api_key = self.api_key.clone();
-        let project_id = self.project_id;
 
         let res = self
             .s3_client
@@ -264,9 +272,12 @@ impl RootS3Client {
         Ok(res)
     }
 
-    pub async fn list_objects(&self, bucket: &str) -> Result<ListObjectsV2Output> {
+    pub async fn list_objects(
+        &self,
+        bucket: &str,
+        project_id: i32,
+    ) -> Result<ListObjectsV2Output, Error> {
         let api_key = self.api_key.clone();
-        let project_id = self.project_id;
 
         let res = self
             .s3_client

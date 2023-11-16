@@ -30,18 +30,18 @@ async fn main() -> std::io::Result<()> {
 
     match S3Cli::parse() {
         S3Cli::CreateBucket(CreateBucketArgs { url, name, project }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key, project).unwrap();
-            let _ = client.create_bucket(name.clone()).await.unwrap();
+            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
+            let _ = client.create_bucket(&name, project).await.unwrap();
             println!("Bucket created: {:?}", name);
         }
         S3Cli::DeleteBucket(DeleteBucketArgs { url, name, project }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key, project).unwrap();
-            let _ = client.delete_bucket(name.clone()).await.unwrap();
+            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
+            let _ = client.delete_bucket(&name, project).await.unwrap();
             println!("Bucket deleted: {:?}", name);
         }
         S3Cli::ListBuckets(ListBucketsArgs { url, project }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key, project).unwrap();
-            let res = client.list_buckets().await.unwrap();
+            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
+            let res = client.list_buckets(project).await.unwrap();
 
             debug!("result {:?}", res);
 
@@ -66,7 +66,7 @@ async fn main() -> std::io::Result<()> {
             file_path,
             project,
         }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key, project).unwrap();
+            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
 
             let mut file = File::open(file_path).await?;
             let mut buffer = BytesMut::new();
@@ -76,7 +76,7 @@ async fn main() -> std::io::Result<()> {
             log::debug!("buffer size: {}", buffer.len());
 
             let res = client
-                .put_object(bucket.clone(), key, buffer.freeze())
+                .put_object(&bucket.clone(), &key, buffer.freeze(), project)
                 .await
                 .unwrap();
 
@@ -93,8 +93,11 @@ async fn main() -> std::io::Result<()> {
             output,
             project,
         }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key, project).unwrap();
-            let res = client.get_object(bucket, key.clone()).await.unwrap();
+            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
+            let res = client
+                .get_object(&bucket, &key.clone(), project)
+                .await
+                .unwrap();
 
             // Write content to output file
             let mut body = res.body.into_async_read();
@@ -112,9 +115,9 @@ async fn main() -> std::io::Result<()> {
             key,
             project,
         }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key, project).unwrap();
+            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
 
-            let _ = client.delete_object(&bucket, &key).await.unwrap();
+            let _ = client.delete_object(&bucket, &key, project).await.unwrap();
 
             println!("Object with id '{}' deleted", key);
         }
@@ -123,8 +126,8 @@ async fn main() -> std::io::Result<()> {
             bucket,
             project,
         }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key, project).unwrap();
-            let res = client.list_objects(&bucket).await.unwrap();
+            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
+            let res = client.list_objects(&bucket, project).await.unwrap();
 
             if let Some(contents) = res.contents {
                 println!("Objects in bucket '{}'\n", bucket);
