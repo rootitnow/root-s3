@@ -199,7 +199,6 @@ impl RootS3Client {
                 let mut uri = req.uri_mut().to_string();
                 uri += format!("&project_id={project_id}").as_str();
                 *req.uri_mut() = uri.parse().unwrap();
-                log::debug!("put object req: {:?}", req);
             })
             .send()
             .await

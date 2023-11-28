@@ -1,4 +1,3 @@
-use bytes::BytesMut;
 use clap::*;
 use log::debug;
 use tokio::{fs::File, io::AsyncReadExt};
@@ -31,13 +30,19 @@ async fn main() -> std::io::Result<()> {
     match S3Cli::parse() {
         S3Cli::CreateBucket(CreateBucketArgs { url, name, project }) => {
             let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
-            let _ = client.create_bucket(&name, project).await.unwrap();
-            println!("Bucket created: {:?}", name);
+            let res = client.create_bucket(&name, project).await;
+            match res {
+                Ok(_) => println!("Bucket created: {:?}", name),
+                Err(e) => eprintln!("Error creating bucket: {:?}", e),
+            }
         }
         S3Cli::DeleteBucket(DeleteBucketArgs { url, name, project }) => {
             let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
-            let _ = client.delete_bucket(&name, project).await.unwrap();
-            println!("Bucket deleted: {:?}", name);
+            let res = client.delete_bucket(&name, project).await;
+            match res {
+                Ok(_) => println!("Bucket deleted: {:?}", name),
+                Err(e) => eprintln!("Error deleting bucket: {:?}", e),
+            }
         }
         S3Cli::ListBuckets(ListBucketsArgs { url, project }) => {
             let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
@@ -69,22 +74,26 @@ async fn main() -> std::io::Result<()> {
             let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
 
             let mut file = File::open(file_path).await?;
-            let mut buffer = BytesMut::new();
-            // read the whole file
-            file.read_buf(&mut buffer).await?;
 
+            // Create a buffer to store the file contents
+            let mut buffer = Vec::new();
+
+            // Read the entire file into the buffer
+            file.read_to_end(&mut buffer).await?;
             log::debug!("buffer size: {}", buffer.len());
 
             let res = client
-                .put_object(&bucket.clone(), &key, buffer.freeze(), project)
-                .await
-                .unwrap();
+                .put_object(&bucket, &key, buffer.into(), project)
+                .await;
 
-            println!(
-                "Object with id '{}' created in bucket {}",
-                res.e_tag.unwrap(),
-                bucket
-            );
+            match res {
+                Ok(r) => println!(
+                    "Object created: {:?} in bucket {:?}",
+                    r.e_tag.unwrap(),
+                    bucket
+                ),
+                Err(e) => eprintln!("Error creating object: {:?}", e),
+            }
         }
         S3Cli::GetObject(GetObjectArgs {
             url,
@@ -94,20 +103,22 @@ async fn main() -> std::io::Result<()> {
             project,
         }) => {
             let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
-            let res = client
-                .get_object(&bucket, &key.clone(), project)
-                .await
-                .unwrap();
+            let res = client.get_object(&bucket, &key, project).await;
 
-            // Write content to output file
-            let mut body = res.body.into_async_read();
-            let mut file = File::create(&output).await?;
-            tokio::io::copy(&mut body, &mut file).await?;
+            match res {
+                Ok(res) => {
+                    // Write content to output file
+                    let mut body = res.body.into_async_read();
+                    let mut file = File::create(&output).await?;
+                    tokio::io::copy(&mut body, &mut file).await?;
 
-            println!(
-                "Object with id '{}' downloaded to {}, size: {} bytes",
-                key, output, res.content_length
-            );
+                    println!(
+                        "Object with id '{}' downloaded to {}, size: {} bytes",
+                        key, output, res.content_length
+                    );
+                }
+                Err(e) => eprintln!("Error getting object: {:?}", e),
+            }
         }
         S3Cli::DeleteObject(DeleteObjectArgs {
             url,
@@ -117,9 +128,11 @@ async fn main() -> std::io::Result<()> {
         }) => {
             let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
 
-            let _ = client.delete_object(&bucket, &key, project).await.unwrap();
-
-            println!("Object with id '{}' deleted", key);
+            let res = client.delete_object(&bucket, &key, project).await;
+            match res {
+                Ok(_) => println!("Object with id '{}' deleted", key),
+                Err(e) => eprintln!("Error deleting object: {:?}", e),
+            }
         }
         S3Cli::ListObjects(ListObjectArgs {
             url,
