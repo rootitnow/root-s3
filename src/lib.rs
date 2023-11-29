@@ -2,6 +2,7 @@ use anyhow::Result;
 use aws_credential_types::{provider::SharedCredentialsProvider, Credentials};
 use aws_sdk_s3::{
     operation::{
+        copy_object::{CopyObjectError, CopyObjectOutput},
         create_bucket::{CreateBucketError, CreateBucketOutput},
         delete_bucket::{DeleteBucketError, DeleteBucketOutput},
         delete_object::{DeleteObjectError, DeleteObjectOutput},
@@ -39,6 +40,8 @@ pub enum Error {
     ErrListBuckets(Box<ListBucketsError>),
     #[error("Failed to put object: {0}")]
     ErrPutObject(Box<PutObjectError>),
+    #[error("Failed to copy object: {0}")]
+    ErrCopyObject(Box<CopyObjectError>),
     #[error("Failed to get object: {0}")]
     ErrGetObject(Box<GetObjectError>),
     #[error("Failed to delete object: {0}")]
@@ -203,6 +206,42 @@ impl RootS3Client {
             .send()
             .await
             .map_err(|e| Error::ErrPutObject(Box::new(e.into_service_error())))?;
+
+        Ok(res)
+    }
+
+    pub async fn copy_object(
+        &self,
+        bucket: &str,
+        key: &str,
+        target_bucket: &str,
+        target_key: &str,
+        project_id: i32,
+    ) -> Result<CopyObjectOutput, Error> {
+        let api_key = self.api_key.clone();
+
+        let res = self
+            .s3_client
+            .copy_object()
+            .key(key)
+            .copy_source(format!("{}/{}", target_bucket, target_key))
+            .bucket(bucket)
+            .customize()
+            .await
+            .map_err(|e| Error::ErrCopyObject(Box::new(e.into_service_error())))?
+            .mutate_request(move |req| {
+                req.headers_mut().append(
+                    "x-api-key",
+                    header::HeaderValue::from_str(&api_key).unwrap(),
+                );
+                let mut uri = req.uri_mut().to_string();
+                uri += format!("&project_id={project_id}").as_str();
+                *req.uri_mut() = uri.parse().unwrap();
+                log::debug!("req {:?}", req);
+            })
+            .send()
+            .await
+            .map_err(|e| Error::ErrCopyObject(Box::new(e.into_service_error())))?;
 
         Ok(res)
     }

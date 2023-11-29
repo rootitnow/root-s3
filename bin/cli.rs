@@ -15,6 +15,7 @@ pub enum S3Cli {
     // Objects
     PutObject(PutObjectArgs),
     GetObject(GetObjectArgs),
+    CopyObject(CopyObjectArgs),
     DeleteObject(DeleteObjectArgs),
     ListObjects(ListObjectArgs),
 }
@@ -118,6 +119,27 @@ async fn main() -> std::io::Result<()> {
                     );
                 }
                 Err(e) => eprintln!("Error getting object: {:?}", e),
+            }
+        }
+        S3Cli::CopyObject(CopyObjectArgs {
+            url,
+            bucket,
+            key,
+            source_bucket,
+            source_key,
+            project,
+        }) => {
+            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
+            let res = client
+                .copy_object(&bucket, &key, &source_bucket, &source_key, project)
+                .await;
+
+            match res {
+                Ok(res) => {
+                    println!("{:?}", res);
+                    println!("Object copied: {:?} to bucket {:?}", key, bucket);
+                }
+                Err(e) => eprintln!("Error copying object: {:?}", e),
             }
         }
         S3Cli::DeleteObject(DeleteObjectArgs {
@@ -231,6 +253,28 @@ pub struct GetObjectArgs {
 
     #[arg(long)]
     pub output: String,
+
+    #[arg(long)]
+    pub project: i32,
+}
+
+#[derive(clap::Args)]
+#[command(author, version, about, long_about = None)]
+pub struct CopyObjectArgs {
+    #[arg(long, short)]
+    pub url: String,
+
+    #[arg(long)]
+    pub bucket: String,
+
+    #[arg(long)]
+    pub key: String,
+
+    #[arg(long)]
+    pub source_bucket: String,
+
+    #[arg(long)]
+    pub source_key: String,
 
     #[arg(long)]
     pub project: i32,
