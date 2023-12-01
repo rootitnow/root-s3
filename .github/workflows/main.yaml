@@ -1,0 +1,40 @@
+name: Main
+
+on:
+  push:
+    branches:
+      - '*'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - '*'
+
+permissions:
+  contents: read
+
+concurrency:
+  # Make sure we only run one pipeline at a time for this branch.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+
+jobs:
+  fmt_and_clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code and cache Rust dependencies
+        uses: actions/checkout@v4
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1.5.0
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy
