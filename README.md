@@ -84,3 +84,9 @@ cargo run --bin s3-cli delete-object --bucket testbucket --key a1 --project 1 --
 ```bash
 cargo run --bin s3-cli list-objects --project 1 --bucket "testbucket" --url http://localhost:9000
 ```
+
+### Getting the head for an object
+
+```bash
+cargo run --bin s3-cli head-object --project 1 --bucket "testbucket" --key "a1" --url http://localhost:9000
+```
