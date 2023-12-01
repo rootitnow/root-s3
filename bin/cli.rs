@@ -1,5 +1,6 @@
 use clap::*;
 use log::debug;
+use std::collections::HashMap;
 use tokio::{fs::File, io::AsyncReadExt};
 
 use root_s3::RootS3Client;
@@ -18,6 +19,7 @@ pub enum S3Cli {
     CopyObject(CopyObjectArgs),
     DeleteObject(DeleteObjectArgs),
     ListObjects(ListObjectArgs),
+    GetHeadObject(GetHeadObject),
 }
 
 #[tokio::main]
@@ -71,6 +73,7 @@ async fn main() -> std::io::Result<()> {
             key,
             file_path,
             project,
+            metadata,
         }) => {
             let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
 
@@ -79,12 +82,20 @@ async fn main() -> std::io::Result<()> {
             // Create a buffer to store the file contents
             let mut buffer = Vec::new();
 
+            let mut metadata_map = HashMap::new();
+            metadata.split(',').for_each(|m| {
+                let mut split = m.split('=');
+                let key = split.next().unwrap();
+                let value = split.next().unwrap();
+                metadata_map.insert(key.to_string(), value.to_string());
+            });
+
             // Read the entire file into the buffer
             file.read_to_end(&mut buffer).await?;
             log::debug!("buffer size: {}", buffer.len());
 
             let res = client
-                .put_object(&bucket, &key, buffer.into(), project)
+                .put_object(&bucket, &key, buffer.into(), project, Some(metadata_map))
                 .await;
 
             match res {
@@ -115,7 +126,9 @@ async fn main() -> std::io::Result<()> {
 
                     println!(
                         "Object with id '{}' downloaded to {}, size: {} bytes",
-                        key, output, res.content_length
+                        key,
+                        output,
+                        res.content_length.unwrap()
                     );
                 }
                 Err(e) => eprintln!("Error getting object: {:?}", e),
@@ -171,13 +184,37 @@ async fn main() -> std::io::Result<()> {
                         "- Object:\n\tkey: {:?}\n\tupdated at: {:?}\n\tsize: {} bytes",
                         c.key.unwrap(),
                         c.last_modified.unwrap().secs(),
-                        c.size,
+                        c.size.unwrap(),
                     );
                 }
                 println!("\n");
             } else {
                 println!("No objects in bucket '{}'", bucket);
             }
+        }
+        S3Cli::GetHeadObject(GetHeadObject {
+            url,
+            bucket,
+            key,
+            project,
+        }) => {
+            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
+            let res = client.head_object(&bucket, &key, project).await.unwrap();
+
+            println!("Object with id '{}' in bucket '{}'\n", key, bucket);
+            if let Some(meta) = res.metadata {
+                println!("Metadata:");
+                for (k, v) in meta {
+                    println!("\t{}: {}", k, v);
+                }
+            }
+            println!(
+                "- Object:\n\tkey: {:?}\n\tupdated at: {:?}\n\tsize: {} bytes",
+                key,
+                res.last_modified,
+                res.content_length.unwrap_or_default(),
+            );
+            println!("\n");
         }
     }
 
@@ -234,6 +271,9 @@ pub struct PutObjectArgs {
 
     #[arg(long)]
     pub file_path: String,
+
+    #[arg(long)]
+    pub metadata: String,
 
     #[arg(long)]
     pub project: i32,
@@ -304,6 +344,22 @@ pub struct ListObjectArgs {
 
     #[arg(long)]
     pub bucket: String,
+
+    #[arg(long)]
+    pub project: i32,
+}
+
+#[derive(clap::Args)]
+#[command(author, version, about, long_about = None)]
+pub struct GetHeadObject {
+    #[arg(long, short)]
+    pub url: String,
+
+    #[arg(long)]
+    pub bucket: String,
+
+    #[arg(long)]
+    pub key: String,
 
     #[arg(long)]
     pub project: i32,

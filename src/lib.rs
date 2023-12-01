@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 use aws_credential_types::{provider::SharedCredentialsProvider, Credentials};
 use aws_sdk_s3::{
@@ -7,6 +9,7 @@ use aws_sdk_s3::{
         delete_bucket::{DeleteBucketError, DeleteBucketOutput},
         delete_object::{DeleteObjectError, DeleteObjectOutput},
         get_object::{GetObjectError, GetObjectOutput},
+        head_object::{HeadObjectError, HeadObjectOutput},
         list_buckets::{ListBucketsError, ListBucketsOutput},
         list_objects_v2::{ListObjectsV2Error, ListObjectsV2Output},
         put_object::{PutObjectError, PutObjectOutput},
@@ -15,8 +18,8 @@ use aws_sdk_s3::{
     types::CreateBucketConfiguration,
     Client,
 };
-use aws_types::{region::Region, SdkConfig};
-use http::header;
+use aws_smithy_runtime_api::http::Request;
+use aws_types::{region::Region, sdk_config::SdkConfig};
 use thiserror::Error;
 
 /// RootS3Client struct represents a client for interacting with the S3 service of root.
@@ -44,6 +47,8 @@ pub enum Error {
     ErrCopyObject(Box<CopyObjectError>),
     #[error("Failed to get object: {0}")]
     ErrGetObject(Box<GetObjectError>),
+    #[error("Failed to get head object: {0}")]
+    ErrGetHeadObject(Box<HeadObjectError>),
     #[error("Failed to delete object: {0}")]
     ErrDeleteObject(Box<DeleteObjectError>),
     #[error("Failed to list objects: {0}")]
@@ -103,17 +108,7 @@ impl RootS3Client {
             .create_bucket_configuration(cfg)
             .bucket(bucket)
             .customize()
-            .await
-            .map_err(|e| Error::ErrCreateBucket(Box::new(e.into_service_error())))?
-            .mutate_request(move |req| {
-                req.headers_mut().append(
-                    "x-api-key",
-                    header::HeaderValue::from_str(&api_key).unwrap(),
-                );
-                let mut uri = req.uri_mut().to_string();
-                uri += format!("?project_id={}", &project_id).as_str();
-                *req.uri_mut() = uri.parse().unwrap();
-            })
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
             .send()
             .await
             .map_err(|e| Error::ErrCreateBucket(Box::new(e.into_service_error())))?;
@@ -133,17 +128,7 @@ impl RootS3Client {
             .delete_bucket()
             .bucket(bucket)
             .customize()
-            .await
-            .map_err(|e| Error::ErrDeleteBucket(Box::new(e.into_service_error())))?
-            .mutate_request(move |req| {
-                req.headers_mut().append(
-                    "x-api-key",
-                    header::HeaderValue::from_str(&api_key).unwrap(),
-                );
-                let mut uri = req.uri_mut().to_string();
-                uri += format!("?project_id={project_id}").as_str();
-                *req.uri_mut() = uri.parse().unwrap();
-            })
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
             .send()
             .await
             .map_err(|e| Error::ErrDeleteBucket(Box::new(e.into_service_error())))?;
@@ -158,17 +143,7 @@ impl RootS3Client {
             .s3_client
             .list_buckets()
             .customize()
-            .await
-            .map_err(|e| Error::ErrListBuckets(Box::new(e.into_service_error())))?
-            .mutate_request(move |req| {
-                req.headers_mut().append(
-                    "x-api-key",
-                    header::HeaderValue::from_str(&api_key).unwrap(),
-                );
-                let mut uri = req.uri_mut().to_string();
-                uri += format!("?project_id={project_id}").as_str();
-                *req.uri_mut() = uri.parse().unwrap();
-            })
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
             .send()
             .await
             .map_err(|e| Error::ErrListBuckets(Box::new(e.into_service_error())))?;
@@ -182,6 +157,7 @@ impl RootS3Client {
         key: &str,
         data: bytes::Bytes,
         project_id: i32,
+        metadata: Option<HashMap<String, String>>,
     ) -> Result<PutObjectOutput, Error> {
         let api_key = self.api_key.clone();
 
@@ -191,18 +167,9 @@ impl RootS3Client {
             .key(key)
             .body(data.into())
             .bucket(bucket)
+            .set_metadata(metadata)
             .customize()
-            .await
-            .map_err(|e| Error::ErrPutObject(Box::new(e.into_service_error())))?
-            .mutate_request(move |req| {
-                req.headers_mut().append(
-                    "x-api-key",
-                    header::HeaderValue::from_str(&api_key).unwrap(),
-                );
-                let mut uri = req.uri_mut().to_string();
-                uri += format!("&project_id={project_id}").as_str();
-                *req.uri_mut() = uri.parse().unwrap();
-            })
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
             .send()
             .await
             .map_err(|e| Error::ErrPutObject(Box::new(e.into_service_error())))?;
@@ -227,18 +194,7 @@ impl RootS3Client {
             .copy_source(format!("{}/{}", target_bucket, target_key))
             .bucket(bucket)
             .customize()
-            .await
-            .map_err(|e| Error::ErrCopyObject(Box::new(e.into_service_error())))?
-            .mutate_request(move |req| {
-                req.headers_mut().append(
-                    "x-api-key",
-                    header::HeaderValue::from_str(&api_key).unwrap(),
-                );
-                let mut uri = req.uri_mut().to_string();
-                uri += format!("&project_id={project_id}").as_str();
-                *req.uri_mut() = uri.parse().unwrap();
-                log::debug!("req {:?}", req);
-            })
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
             .send()
             .await
             .map_err(|e| Error::ErrCopyObject(Box::new(e.into_service_error())))?;
@@ -260,17 +216,7 @@ impl RootS3Client {
             .key(key)
             .bucket(bucket)
             .customize()
-            .await
-            .map_err(|e| Error::ErrGetObject(Box::new(e.into_service_error())))?
-            .mutate_request(move |req| {
-                req.headers_mut().append(
-                    "x-api-key",
-                    header::HeaderValue::from_str(&api_key).unwrap(),
-                );
-                let mut uri = req.uri_mut().to_string();
-                uri += format!("&project_id={project_id}").as_str();
-                *req.uri_mut() = uri.parse().unwrap();
-            })
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
             .send()
             .await
             .map_err(|e| Error::ErrGetObject(Box::new(e.into_service_error())))?;
@@ -292,17 +238,7 @@ impl RootS3Client {
             .key(key)
             .bucket(bucket)
             .customize()
-            .await
-            .map_err(|e| Error::ErrDeleteObject(Box::new(e.into_service_error())))?
-            .mutate_request(move |req| {
-                req.headers_mut().append(
-                    "x-api-key",
-                    header::HeaderValue::from_str(&api_key).unwrap(),
-                );
-                let mut uri = req.uri_mut().to_string();
-                uri += format!("&project_id={project_id}").as_str();
-                *req.uri_mut() = uri.parse().unwrap();
-            })
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
             .send()
             .await
             .map_err(|e| Error::ErrDeleteObject(Box::new(e.into_service_error())))?;
@@ -322,21 +258,55 @@ impl RootS3Client {
             .list_objects_v2()
             .bucket(bucket)
             .customize()
-            .await
-            .map_err(|e| Error::ErrListObjects(Box::new(e.into_service_error())))?
-            .mutate_request(move |req| {
-                req.headers_mut().append(
-                    "x-api-key",
-                    header::HeaderValue::from_str(&api_key).unwrap(),
-                );
-                let mut uri = req.uri_mut().to_string();
-                uri += format!("&project_id={project_id}").as_str();
-                *req.uri_mut() = uri.parse().unwrap();
-            })
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
             .send()
             .await
             .map_err(|e| Error::ErrListObjects(Box::new(e.into_service_error())))?;
 
         Ok(res)
     }
+
+    pub async fn head_object(
+        &self,
+        bucket: &str,
+        key: &str,
+        project_id: i32,
+    ) -> Result<HeadObjectOutput, Error> {
+        let api_key = self.api_key.clone();
+
+        let res = self
+            .s3_client
+            .head_object()
+            .key(key)
+            .bucket(bucket)
+            .customize()
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
+            .send()
+            .await
+            .map_err(|e| Error::ErrGetHeadObject(Box::new(e.into_service_error())))?;
+
+        Ok(res)
+    }
+}
+
+// Add the api key to the headers and the project id to the query
+fn add_root_auth(req: &mut Request, api_key: String, project_id: i32) {
+    // Add the api key to the headers
+    req.headers_mut().append("x-api-key", api_key);
+
+    // Add the project id to the query
+    let new_query = match req.uri_mut().query() {
+        Some(_) => {
+            format!("&project_id={}", project_id)
+        }
+        None => {
+            format!("?project_id={}", project_id)
+        }
+    };
+
+    // Create the new uri
+    let new_uri = req.uri().to_owned() + new_query.as_str();
+
+    // Set the new uri
+    let _ = req.set_uri(new_uri);
 }
