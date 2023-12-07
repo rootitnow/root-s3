@@ -82,20 +82,25 @@ async fn main() -> std::io::Result<()> {
             // Create a buffer to store the file contents
             let mut buffer = Vec::new();
 
-            let mut metadata_map = HashMap::new();
-            metadata.split(',').for_each(|m| {
-                let mut split = m.split('=');
-                let key = split.next().unwrap();
-                let value = split.next().unwrap();
-                metadata_map.insert(key.to_string(), value.to_string());
-            });
+            let metadata_map = if let Some(metadata) = metadata {
+                let mut map = HashMap::new();
+                metadata.split(',').for_each(|m| {
+                    let mut split = m.split('=');
+                    let key = split.next().unwrap();
+                    let value = split.next().unwrap();
+                    map.insert(key.to_string(), value.to_string());
+                });
+                Some(map)
+            } else {
+                None
+            };
 
             // Read the entire file into the buffer
             file.read_to_end(&mut buffer).await?;
             log::debug!("buffer size: {}", buffer.len());
 
             let res = client
-                .put_object(&bucket, &key, buffer.into(), project, Some(metadata_map))
+                .put_object(&bucket, &key, buffer.into(), project, metadata_map)
                 .await;
 
             match res {
@@ -273,7 +278,7 @@ pub struct PutObjectArgs {
     pub file_path: String,
 
     #[arg(long)]
-    pub metadata: String,
+    pub metadata: Option<String>,
 
     #[arg(long)]
     pub project: i32,
