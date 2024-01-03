@@ -27,6 +27,7 @@ use thiserror::Error;
 pub struct RootS3Client {
     /// API key for authentication.
     pub api_key: String,
+    pub org_id: i32,
     /// S3 client from AWS SDK.
     pub s3_client: Client,
 }
@@ -67,17 +68,19 @@ impl<'a> RootS3Client {
     /// # Returns
     ///
     /// A Result containing the initialized `RootS3Client` or an `Error` if the URL is invalid.
-    pub fn new(url: impl Into<&'a str>, api_key: String) -> Result<Self, Error> {
+    pub fn new(url: impl Into<&'a str>, api_key: String, org_id: i32) -> Result<Self, Error> {
         let s3_client = get_s3_client(url.into()).map_err(|_| Error::InvalidUrl)?;
-        Ok(Self { api_key, s3_client })
+        Ok(Self {
+            api_key,
+            s3_client,
+            org_id,
+        })
     }
 }
 
 pub fn get_s3_client(url: &str) -> Result<Client> {
     let cred = Credentials::new("", "", None, None, "");
     let scred = SharedCredentialsProvider::new(cred);
-
-    let url = format!("{}/api/v1/s3", url);
 
     let client = Client::new(
         &SdkConfig::builder()
@@ -101,6 +104,7 @@ impl RootS3Client {
             .build();
 
         let api_key = self.api_key.clone();
+        let org_id = self.org_id.clone();
 
         let res = self
             .s3_client
@@ -108,7 +112,7 @@ impl RootS3Client {
             .create_bucket_configuration(cfg)
             .bucket(bucket)
             .customize()
-            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id, org_id))
             .send()
             .await
             .map_err(|e| Error::ErrCreateBucket(Box::new(e.into_service_error())))?;
@@ -122,13 +126,14 @@ impl RootS3Client {
         project_id: i32,
     ) -> Result<DeleteBucketOutput, Error> {
         let api_key = self.api_key.clone();
+        let org_id = self.org_id.clone();
 
         let res = self
             .s3_client
             .delete_bucket()
             .bucket(bucket)
             .customize()
-            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id, org_id))
             .send()
             .await
             .map_err(|e| Error::ErrDeleteBucket(Box::new(e.into_service_error())))?;
@@ -138,12 +143,13 @@ impl RootS3Client {
 
     pub async fn list_buckets(&self, project_id: i32) -> Result<ListBucketsOutput, Error> {
         let api_key = self.api_key.clone();
+        let org_id = self.org_id.clone();
 
         let res = self
             .s3_client
             .list_buckets()
             .customize()
-            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id, org_id))
             .send()
             .await
             .map_err(|e| Error::ErrListBuckets(Box::new(e.into_service_error())))?;
@@ -160,6 +166,7 @@ impl RootS3Client {
         metadata: Option<HashMap<String, String>>,
     ) -> Result<PutObjectOutput, Error> {
         let api_key = self.api_key.clone();
+        let org_id = self.org_id.clone();
 
         let res = self
             .s3_client
@@ -169,7 +176,7 @@ impl RootS3Client {
             .bucket(bucket)
             .set_metadata(metadata)
             .customize()
-            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id, org_id))
             .send()
             .await
             .map_err(|e| Error::ErrPutObject(Box::new(e.into_service_error())))?;
@@ -186,6 +193,7 @@ impl RootS3Client {
         project_id: i32,
     ) -> Result<CopyObjectOutput, Error> {
         let api_key = self.api_key.clone();
+        let org_id = self.org_id.clone();
 
         let res = self
             .s3_client
@@ -194,7 +202,7 @@ impl RootS3Client {
             .copy_source(format!("{}/{}", target_bucket, target_key))
             .bucket(bucket)
             .customize()
-            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id, org_id))
             .send()
             .await
             .map_err(|e| Error::ErrCopyObject(Box::new(e.into_service_error())))?;
@@ -209,6 +217,7 @@ impl RootS3Client {
         project_id: i32,
     ) -> Result<GetObjectOutput, Error> {
         let api_key = self.api_key.clone();
+        let org_id = self.org_id.clone();
 
         let res = self
             .s3_client
@@ -216,7 +225,7 @@ impl RootS3Client {
             .key(key)
             .bucket(bucket)
             .customize()
-            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id, org_id))
             .send()
             .await
             .map_err(|e| Error::ErrGetObject(Box::new(e.into_service_error())))?;
@@ -231,6 +240,7 @@ impl RootS3Client {
         project_id: i32,
     ) -> Result<DeleteObjectOutput, Error> {
         let api_key = self.api_key.clone();
+        let org_id = self.org_id.clone();
 
         let res = self
             .s3_client
@@ -238,7 +248,7 @@ impl RootS3Client {
             .key(key)
             .bucket(bucket)
             .customize()
-            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id, org_id))
             .send()
             .await
             .map_err(|e| Error::ErrDeleteObject(Box::new(e.into_service_error())))?;
@@ -252,13 +262,14 @@ impl RootS3Client {
         project_id: i32,
     ) -> Result<ListObjectsV2Output, Error> {
         let api_key = self.api_key.clone();
+        let org_id = self.org_id.clone();
 
         let res = self
             .s3_client
             .list_objects_v2()
             .bucket(bucket)
             .customize()
-            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id, org_id))
             .send()
             .await
             .map_err(|e| Error::ErrListObjects(Box::new(e.into_service_error())))?;
@@ -273,6 +284,7 @@ impl RootS3Client {
         project_id: i32,
     ) -> Result<HeadObjectOutput, Error> {
         let api_key = self.api_key.clone();
+        let org_id = self.org_id.clone();
 
         let res = self
             .s3_client
@@ -280,7 +292,7 @@ impl RootS3Client {
             .key(key)
             .bucket(bucket)
             .customize()
-            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id))
+            .mutate_request(move |req| add_root_auth(req, api_key.clone(), project_id, org_id))
             .send()
             .await
             .map_err(|e| Error::ErrGetHeadObject(Box::new(e.into_service_error())))?;
@@ -290,23 +302,20 @@ impl RootS3Client {
 }
 
 // Add the api key to the headers and the project id to the query
-fn add_root_auth(req: &mut Request, api_key: String, project_id: i32) {
+fn add_root_auth(req: &mut Request, api_key: String, org_id: i32, project_id: i32) {
     // Add the api key to the headers
     req.headers_mut().append("x-api-key", api_key);
 
     // Add the project id to the query
-    let new_query = match req.uri_mut().query() {
-        Some(_) => {
-            format!("&project_id={}", project_id)
-        }
-        None => {
-            format!("?project_id={}", project_id)
-        }
-    };
-
-    // Create the new uri
-    let new_uri = req.uri().to_owned() + new_query.as_str();
-
+    let mut path = req.uri().to_owned();
+    log::debug!("path: {}", path);
+    // let (path, query) = path.split_once("/").unwrap();
+    // log::debug!("path: {}", path);
+    // log::debug!("query: {}", query);
+    // let mut path = path.to_owned();
+    path += &format!("api/v1/organisations/{org_id}/projects/{project_id}/s3");
+    log::debug!("path: {}", path);
     // Set the new uri
-    let _ = req.set_uri(new_uri);
+    let _ = req.set_uri(path);
+    log::debug!("req: {:?}", req);
 }
