@@ -1,9 +1,8 @@
+use anyhow::Result;
 use clap::*;
 use log::debug;
 use std::collections::HashMap;
 use tokio::{fs::File, io::AsyncReadExt};
-
-use root_s3::RootS3Client;
 
 #[derive(Parser, Debug)]
 #[clap(name = "Root S3 cli", version = "0.1", about = "S3 cli")]
@@ -20,14 +19,20 @@ pub struct S3Cli {
     )]
     url: String,
 
-    #[clap(long, short, required = true)]
-    org_id: i32,
+    #[clap(long, short, required = false)]
+    org_id: Option<i32>,
 
-    #[clap(long, short, required = true)]
-    project_id: i32,
+    #[clap(long, short, required = false)]
+    project_id: Option<i32>,
 
-    #[clap(long, short, required = true)]
-    api_key: String,
+    #[clap(long, required = false)]
+    api_key: Option<String>,
+
+    #[clap(long, required = false)]
+    access_key: Option<String>,
+
+    #[clap(long, short, required = false)]
+    secret_key: Option<String>,
 }
 
 #[derive(Parser, Debug)] // requires `derive` feature
@@ -51,9 +56,10 @@ async fn main() -> std::io::Result<()> {
     debug!("cli started");
     let args: S3Cli = S3Cli::parse();
 
+    let client = get_client(&args).await.expect("Error creating client");
+
     match args.command {
         SubCommand::CreateBucket(CreateBucketArgs { name }) => {
-            let client = RootS3Client::new(args.url, &*args.api_key, args.org_id).unwrap();
             let res = client.create_bucket(&name, args.project_id).await;
             match res {
                 Ok(_) => println!("Bucket created: {:?}", name),
@@ -61,7 +67,6 @@ async fn main() -> std::io::Result<()> {
             }
         }
         SubCommand::DeleteBucket(DeleteBucketArgs { name }) => {
-            let client = RootS3Client::new(args.url, &*args.api_key, args.org_id).unwrap();
             let res = client.delete_bucket(&name, args.project_id).await;
             match res {
                 Ok(_) => println!("Bucket deleted: {:?}", name),
@@ -69,7 +74,6 @@ async fn main() -> std::io::Result<()> {
             }
         }
         SubCommand::ListBuckets(ListBucketsArgs {}) => {
-            let client = RootS3Client::new(args.url, &*args.api_key, args.org_id).unwrap();
             let res = client.list_buckets(args.project_id).await.unwrap();
 
             debug!("result {:?}", res);
@@ -94,8 +98,6 @@ async fn main() -> std::io::Result<()> {
             file_path,
             metadata,
         }) => {
-            let client = RootS3Client::new(args.url, &*args.api_key, args.org_id).unwrap();
-
             let mut file = File::open(file_path).await?;
 
             // Create a buffer to store the file contents
@@ -136,7 +138,6 @@ async fn main() -> std::io::Result<()> {
             key,
             output,
         }) => {
-            let client = RootS3Client::new(args.url, &*args.api_key, args.org_id).unwrap();
             let res = client.get_object(&bucket, &key, args.project_id).await;
 
             match res {
@@ -162,7 +163,6 @@ async fn main() -> std::io::Result<()> {
             source_bucket,
             source_key,
         }) => {
-            let client = RootS3Client::new(args.url, &*args.api_key, args.org_id).unwrap();
             let res = client
                 .copy_object(&bucket, &key, &source_bucket, &source_key, args.project_id)
                 .await;
@@ -176,8 +176,6 @@ async fn main() -> std::io::Result<()> {
             }
         }
         SubCommand::DeleteObject(DeleteObjectArgs { bucket, key }) => {
-            let client = RootS3Client::new(args.url, &*args.api_key, args.org_id).unwrap();
-
             let res = client.delete_object(&bucket, &key, args.project_id).await;
             match res {
                 Ok(_) => println!("Object with id '{}' deleted", key),
@@ -185,7 +183,6 @@ async fn main() -> std::io::Result<()> {
             }
         }
         SubCommand::ListObjects(ListObjectArgs { bucket }) => {
-            let client = RootS3Client::new(args.url, &*args.api_key, args.org_id).unwrap();
             let res = client.list_objects(&bucket, args.project_id).await.unwrap();
 
             if let Some(contents) = res.contents {
@@ -204,7 +201,6 @@ async fn main() -> std::io::Result<()> {
             }
         }
         SubCommand::GetHeadObject(GetHeadObject { bucket, key }) => {
-            let client = RootS3Client::new(args.url, &*args.api_key, args.org_id).unwrap();
             let res = client
                 .head_object(&bucket, &key, args.project_id)
                 .await
@@ -228,6 +224,29 @@ async fn main() -> std::io::Result<()> {
     }
 
     Ok(())
+}
+
+async fn get_client(args: &S3Cli) -> Result<root_s3::RootS3Client> {
+    if let Some(api_key) = &args.api_key {
+        Ok(root_s3::RootS3Client::new(
+            args.url.clone(),
+            api_key,
+            args.org_id.unwrap_or(0),
+        )?)
+    } else {
+        let cred = root_s3::S3Credentials {
+            access_key_id: args.access_key.clone().unwrap(),
+            secret_access_key: args.secret_key.clone().unwrap(),
+            session_token: None,
+            expiration: None,
+            region: "eu".to_string(),
+        };
+
+        Ok(root_s3::RootS3Client::new_from_s3_credentials(
+            args.url.clone(),
+            cred,
+        )?)
+    }
 }
 
 #[derive(clap::Args, Debug)]

@@ -22,15 +22,15 @@ use thiserror::Error;
 /// RootS3Client struct represents a client for interacting with the S3 service of root.
 #[derive(Debug, Clone)]
 pub struct RootS3Client {
-    /// API key for authentication.
-    pub config: Config,
-
     /// S3 client from AWS SDK.
     pub s3_client: Client,
+
+    /// Optional root config.
+    pub config: Option<RootConfig>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Config {
+pub struct RootConfig {
     pub api_key: String,
     pub org_id: i32,
 }
@@ -59,6 +59,14 @@ pub enum Error {
     ErrListObjects(Box<ListObjectsV2Error>),
 }
 
+pub struct S3Credentials {
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    pub session_token: Option<String>,
+    pub expiration: Option<String>,
+    pub region: String,
+}
+
 impl RootS3Client {
     /// Creates a new `RootS3Client`.
     ///
@@ -76,19 +84,37 @@ impl RootS3Client {
         api_key: impl Into<String>,
         org_id: i32,
     ) -> Result<Self, Error> {
-        let s3_client = get_s3_client(&url.clone().into()).map_err(|_| Error::InvalidUrl)?;
+        let s3_client = get_s3_client(&url.clone().into(), None).map_err(|_| Error::InvalidUrl)?;
+
         Ok(Self {
-            config: Config {
-                api_key: api_key.into().to_string(),
+            config: Some(RootConfig {
+                api_key: api_key.into(),
                 org_id,
-            },
+            }),
+            s3_client,
+        })
+    }
+
+    pub fn new_from_s3_credentials(
+        url: impl Into<String> + Clone,
+        credentials: S3Credentials,
+    ) -> Result<Self, Error> {
+        let s3_client =
+            get_s3_client(&url.clone().into(), Some(credentials)).map_err(|_| Error::InvalidUrl)?;
+
+        Ok(Self {
+            config: None,
             s3_client,
         })
     }
 }
 
-pub fn get_s3_client(url: &str) -> Result<Client> {
-    let cred = Credentials::new("", "", None, None, "");
+pub fn get_s3_client(url: &str, credentials: Option<S3Credentials>) -> Result<Client> {
+    let cred = match credentials {
+        Some(cred) => Credentials::new(cred.access_key_id, cred.secret_access_key, None, None, ""),
+        None => Credentials::new("", "", None, None, ""),
+    };
+
     let scred = SharedCredentialsProvider::new(cred);
 
     let client = Client::new(
@@ -106,7 +132,7 @@ impl RootS3Client {
     pub async fn create_bucket(
         &self,
         bucket: &str,
-        project_id: i32,
+        project_id: Option<i32>,
     ) -> Result<CreateBucketOutput, Error> {
         let config = self.config.clone();
 
@@ -126,7 +152,7 @@ impl RootS3Client {
     pub async fn delete_bucket(
         &self,
         bucket: &str,
-        project_id: i32,
+        project_id: Option<i32>,
     ) -> Result<DeleteBucketOutput, Error> {
         let config = self.config.clone();
 
@@ -143,7 +169,7 @@ impl RootS3Client {
         Ok(res)
     }
 
-    pub async fn list_buckets(&self, project_id: i32) -> Result<ListBucketsOutput, Error> {
+    pub async fn list_buckets(&self, project_id: Option<i32>) -> Result<ListBucketsOutput, Error> {
         let config = self.config.clone();
 
         let res = self
@@ -163,7 +189,7 @@ impl RootS3Client {
         bucket: &str,
         key: &str,
         data: bytes::Bytes,
-        project_id: i32,
+        project_id: Option<i32>,
         metadata: Option<HashMap<String, String>>,
     ) -> Result<PutObjectOutput, Error> {
         let config = self.config.clone();
@@ -190,7 +216,7 @@ impl RootS3Client {
         key: &str,
         target_bucket: &str,
         target_key: &str,
-        project_id: i32,
+        project_id: Option<i32>,
     ) -> Result<CopyObjectOutput, Error> {
         let config = self.config.clone();
 
@@ -213,7 +239,7 @@ impl RootS3Client {
         &self,
         bucket: &str,
         key: &str,
-        project_id: i32,
+        project_id: Option<i32>,
     ) -> Result<GetObjectOutput, Error> {
         let config = self.config.clone();
 
@@ -235,7 +261,7 @@ impl RootS3Client {
         &self,
         bucket: &str,
         key: &str,
-        project_id: i32,
+        project_id: Option<i32>,
     ) -> Result<DeleteObjectOutput, Error> {
         let config = self.config.clone();
 
@@ -256,7 +282,7 @@ impl RootS3Client {
     pub async fn list_objects(
         &self,
         bucket: &str,
-        project_id: i32,
+        project_id: Option<i32>,
     ) -> Result<ListObjectsV2Output, Error> {
         let config = self.config.clone();
 
@@ -277,7 +303,7 @@ impl RootS3Client {
         self,
         bucket: &str,
         key: &str,
-        project_id: i32,
+        project_id: Option<i32>,
     ) -> Result<HeadObjectOutput, Error> {
         let config = self.config.clone();
 
@@ -297,10 +323,20 @@ impl RootS3Client {
 }
 
 // Add the api key to the headers and the project id to the query
-fn add_root_auth(req: &mut Request, config: &Config, project_id: i32) {
+// Only do this if an api key is set
+fn add_root_auth(req: &mut Request, config: &Option<RootConfig>, project_id: Option<i32>) {
+    if config.is_none() {
+        return;
+    };
+
+    if project_id.is_none() {
+        return;
+    };
+
+    let config = config.clone().unwrap();
+
     // Add the api key to the headers
-    req.headers_mut()
-        .append("x-api-key", config.api_key.clone());
+    req.headers_mut().append("x-api-key", config.api_key);
 
     let uri = req.uri().to_string();
     log::debug!("uri: {:?}", uri);
@@ -317,7 +353,8 @@ fn add_root_auth(req: &mut Request, config: &Config, project_id: i32) {
     // Construct the path
     let mut path = format!(
         "/api/v1/organisations/{}/projects/{}/s3",
-        config.org_id, project_id
+        config.org_id,
+        project_id.unwrap()
     );
 
     // If the original path contains more than just a slash, add it to the path
