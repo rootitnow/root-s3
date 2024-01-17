@@ -1,18 +1,15 @@
 use anyhow::Result;
 use aws_credential_types::{provider::SharedCredentialsProvider, Credentials};
-use aws_sdk_s3::{
-    operation::{
-        copy_object::{CopyObjectError, CopyObjectOutput},
-        create_bucket::{CreateBucketError, CreateBucketOutput},
-        delete_bucket::{DeleteBucketError, DeleteBucketOutput},
-        delete_object::{DeleteObjectError, DeleteObjectOutput},
-        get_object::{GetObjectError, GetObjectOutput},
-        head_object::{HeadObjectError, HeadObjectOutput},
-        list_buckets::{ListBucketsError, ListBucketsOutput},
-        list_objects_v2::{ListObjectsV2Error, ListObjectsV2Output},
-        put_object::{PutObjectError, PutObjectOutput},
-    },
-    Client,
+use aws_sdk_s3::operation::{
+    copy_object::{CopyObjectError, CopyObjectOutput},
+    create_bucket::{CreateBucketError, CreateBucketOutput},
+    delete_bucket::{DeleteBucketError, DeleteBucketOutput},
+    delete_object::{DeleteObjectError, DeleteObjectOutput},
+    get_object::{GetObjectError, GetObjectOutput},
+    head_object::{HeadObjectError, HeadObjectOutput},
+    list_buckets::{ListBucketsError, ListBucketsOutput},
+    list_objects_v2::{ListObjectsV2Error, ListObjectsV2Output},
+    put_object::{PutObjectError, PutObjectOutput},
 };
 use aws_smithy_runtime_api::http::Request;
 use aws_types::{region::Region, sdk_config::SdkConfig};
@@ -21,9 +18,9 @@ use thiserror::Error;
 
 /// RootS3Client struct represents a client for interacting with the S3 service of root.
 #[derive(Debug, Clone)]
-pub struct RootS3Client {
+pub struct Client {
     /// S3 client from AWS SDK.
-    pub s3_client: Client,
+    pub s3_client: aws_sdk_s3::Client,
 
     /// Optional root config.
     pub config: Option<RootConfig>,
@@ -67,7 +64,7 @@ pub struct S3Credentials {
     pub region: String,
 }
 
-impl RootS3Client {
+impl Client {
     /// Creates a new `RootS3Client`.
     ///
     /// # Arguments
@@ -109,7 +106,7 @@ impl RootS3Client {
     }
 }
 
-pub fn get_s3_client(url: &str, credentials: Option<S3Credentials>) -> Result<Client> {
+pub fn get_s3_client(url: &str, credentials: Option<S3Credentials>) -> Result<aws_sdk_s3::Client> {
     let cred = match credentials {
         Some(cred) => Credentials::new(cred.access_key_id, cred.secret_access_key, None, None, ""),
         None => Credentials::new("", "", None, None, ""),
@@ -117,7 +114,7 @@ pub fn get_s3_client(url: &str, credentials: Option<S3Credentials>) -> Result<Cl
 
     let scred = SharedCredentialsProvider::new(cred);
 
-    let client = Client::new(
+    let client = aws_sdk_s3::Client::new(
         &SdkConfig::builder()
             .endpoint_url(url)
             .region(Region::new("eu-central-1"))
@@ -128,7 +125,7 @@ pub fn get_s3_client(url: &str, credentials: Option<S3Credentials>) -> Result<Cl
     Ok(client)
 }
 
-impl RootS3Client {
+impl Client {
     pub async fn create_bucket(
         &self,
         bucket: &str,

@@ -226,9 +226,9 @@ async fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-async fn get_client(args: &S3Cli) -> Result<root_s3::RootS3Client> {
+async fn get_client(args: &S3Cli) -> Result<root_s3::Client> {
     if let Some(api_key) = &args.api_key {
-        Ok(root_s3::RootS3Client::new(
+        Ok(root_s3::Client::new(
             args.url.clone(),
             api_key,
             args.org_id.unwrap_or(0),
@@ -242,7 +242,7 @@ async fn get_client(args: &S3Cli) -> Result<root_s3::RootS3Client> {
             region: "eu".to_string(),
         };
 
-        Ok(root_s3::RootS3Client::new_from_s3_credentials(
+        Ok(root_s3::Client::new_from_s3_credentials(
             args.url.clone(),
             cred,
         )?)
