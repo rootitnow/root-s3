@@ -1,14 +1,42 @@
-use clap::*;
+use anyhow::Result;
+use clap::{arg, command, Parser};
 use log::debug;
 use std::collections::HashMap;
 use tokio::{fs::File, io::AsyncReadExt};
 
-use root_s3::RootS3Client;
+#[derive(Parser, Debug)]
+#[clap(name = "Root S3 cli", version = "0.1", about = "S3 cli")]
+pub struct S3Cli {
+    #[clap(subcommand)]
+    command: SubCommand,
 
-#[derive(Parser)] // requires `derive` feature
-#[command(name = "cargo")]
-#[command(bin_name = "cargo")]
-pub enum S3Cli {
+    #[clap(
+        long,
+        value_name = "URL",
+        required = false,
+        default_value = "http://localhost:9000",
+        short = 'u'
+    )]
+    url: String,
+
+    #[clap(long, short, required = false)]
+    org_id: Option<i32>,
+
+    #[clap(long, short, required = false)]
+    project_id: Option<i32>,
+
+    #[clap(long, required = false)]
+    api_key: Option<String>,
+
+    #[clap(long, required = false)]
+    access_key: Option<String>,
+
+    #[clap(long, short, required = false)]
+    secret_key: Option<String>,
+}
+
+#[derive(Parser, Debug)] // requires `derive` feature
+pub enum SubCommand {
     // Buckets
     CreateBucket(CreateBucketArgs),
     DeleteBucket(DeleteBucketArgs),
@@ -23,33 +51,31 @@ pub enum S3Cli {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> std::io::Result<()> {
     env_logger::init();
     debug!("cli started");
+    let args: S3Cli = S3Cli::parse();
 
-    let api_key = std::env::var("API_KEY").expect("API_KEY not set");
-    log::debug!("api key: {}", api_key);
+    let client = get_client(&args).expect("Error creating client");
 
-    match S3Cli::parse() {
-        S3Cli::CreateBucket(CreateBucketArgs { url, name, project }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
-            let res = client.create_bucket(&name, project).await;
+    match args.command {
+        SubCommand::CreateBucket(CreateBucketArgs { name }) => {
+            let res = client.create_bucket(&name, args.project_id).await;
             match res {
-                Ok(_) => println!("Bucket created: {:?}", name),
-                Err(e) => eprintln!("Error creating bucket: {:?}", e),
+                Ok(_) => println!("Bucket created: {name:?}"),
+                Err(e) => eprintln!("Error creating bucket: {e:?}"),
             }
         }
-        S3Cli::DeleteBucket(DeleteBucketArgs { url, name, project }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
-            let res = client.delete_bucket(&name, project).await;
+        SubCommand::DeleteBucket(DeleteBucketArgs { name }) => {
+            let res = client.delete_bucket(&name, args.project_id).await;
             match res {
-                Ok(_) => println!("Bucket deleted: {:?}", name),
-                Err(e) => eprintln!("Error deleting bucket: {:?}", e),
+                Ok(_) => println!("Bucket deleted: {name:?}"),
+                Err(e) => eprintln!("Error deleting bucket: {e:?}"),
             }
         }
-        S3Cli::ListBuckets(ListBucketsArgs { url, project }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
-            let res = client.list_buckets(project).await.unwrap();
+        SubCommand::ListBuckets(ListBucketsArgs {}) => {
+            let res = client.list_buckets(args.project_id).await.unwrap();
 
             debug!("result {:?}", res);
 
@@ -67,16 +93,12 @@ async fn main() -> std::io::Result<()> {
                 println!("No buckets");
             }
         }
-        S3Cli::PutObject(PutObjectArgs {
-            url,
+        SubCommand::PutObject(PutObjectArgs {
             bucket,
             key,
             file_path,
-            project,
             metadata,
         }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
-
             let mut file = File::open(file_path).await?;
 
             // Create a buffer to store the file contents
@@ -100,7 +122,7 @@ async fn main() -> std::io::Result<()> {
             log::debug!("buffer size: {}", buffer.len());
 
             let res = client
-                .put_object(&bucket, &key, buffer.into(), project, metadata_map)
+                .put_object(&bucket, &key, buffer.into(), args.project_id, metadata_map)
                 .await;
 
             match res {
@@ -109,18 +131,15 @@ async fn main() -> std::io::Result<()> {
                     r.e_tag.unwrap(),
                     bucket
                 ),
-                Err(e) => eprintln!("Error creating object: {:?}", e),
+                Err(e) => eprintln!("Error creating object: {e:?}"),
             }
         }
-        S3Cli::GetObject(GetObjectArgs {
-            url,
+        SubCommand::GetObject(GetObjectArgs {
             bucket,
             key,
             output,
-            project,
         }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
-            let res = client.get_object(&bucket, &key, project).await;
+            let res = client.get_object(&bucket, &key, args.project_id).await;
 
             match res {
                 Ok(res) => {
@@ -136,54 +155,39 @@ async fn main() -> std::io::Result<()> {
                         res.content_length.unwrap()
                     );
                 }
-                Err(e) => eprintln!("Error getting object: {:?}", e),
+                Err(e) => eprintln!("Error getting object: {e:?}"),
             }
         }
-        S3Cli::CopyObject(CopyObjectArgs {
-            url,
+        SubCommand::CopyObject(CopyObjectArgs {
             bucket,
             key,
             source_bucket,
             source_key,
-            project,
         }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
             let res = client
-                .copy_object(&bucket, &key, &source_bucket, &source_key, project)
+                .copy_object(&bucket, &key, &source_bucket, &source_key, args.project_id)
                 .await;
 
             match res {
                 Ok(res) => {
-                    println!("{:?}", res);
-                    println!("Object copied: {:?} to bucket {:?}", key, bucket);
+                    println!("{res:?}");
+                    println!("Object copied: {key:?} to bucket {bucket:?}");
                 }
-                Err(e) => eprintln!("Error copying object: {:?}", e),
+                Err(e) => eprintln!("Error copying object: {e:?}"),
             }
         }
-        S3Cli::DeleteObject(DeleteObjectArgs {
-            url,
-            bucket,
-            key,
-            project,
-        }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
-
-            let res = client.delete_object(&bucket, &key, project).await;
+        SubCommand::DeleteObject(DeleteObjectArgs { bucket, key }) => {
+            let res = client.delete_object(&bucket, &key, args.project_id).await;
             match res {
-                Ok(_) => println!("Object with id '{}' deleted", key),
-                Err(e) => eprintln!("Error deleting object: {:?}", e),
+                Ok(_) => println!("Object with id '{key}' deleted"),
+                Err(e) => eprintln!("Error deleting object: {e:?}"),
             }
         }
-        S3Cli::ListObjects(ListObjectArgs {
-            url,
-            bucket,
-            project,
-        }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
-            let res = client.list_objects(&bucket, project).await.unwrap();
+        SubCommand::ListObjects(ListObjectArgs { bucket }) => {
+            let res = client.list_objects(&bucket, args.project_id).await.unwrap();
 
             if let Some(contents) = res.contents {
-                println!("Objects in bucket '{}'\n", bucket);
+                println!("Objects in bucket '{bucket}'\n");
                 for c in contents {
                     println!(
                         "- Object:\n\tkey: {:?}\n\tupdated at: {:?}\n\tsize: {} bytes",
@@ -194,23 +198,20 @@ async fn main() -> std::io::Result<()> {
                 }
                 println!("\n");
             } else {
-                println!("No objects in bucket '{}'", bucket);
+                println!("No objects in bucket '{bucket}'");
             }
         }
-        S3Cli::GetHeadObject(GetHeadObject {
-            url,
-            bucket,
-            key,
-            project,
-        }) => {
-            let client = RootS3Client::new(url.as_ref(), api_key).unwrap();
-            let res = client.head_object(&bucket, &key, project).await.unwrap();
+        SubCommand::GetHeadObject(GetHeadObject { bucket, key }) => {
+            let res = client
+                .head_object(&bucket, &key, args.project_id)
+                .await
+                .unwrap();
 
-            println!("Object with id '{}' in bucket '{}'\n", key, bucket);
+            println!("Object with id '{key}' in bucket '{bucket}'\n");
             if let Some(meta) = res.metadata {
                 println!("Metadata:");
                 for (k, v) in meta {
-                    println!("\t{}: {}", k, v);
+                    println!("\t{k}: {v}");
                 }
             }
             println!(
@@ -226,48 +227,50 @@ async fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-#[derive(clap::Args)]
+fn get_client(args: &S3Cli) -> Result<root_s3::Client> {
+    if let Some(api_key) = &args.api_key {
+        Ok(root_s3::Client::new(
+            args.url.clone(),
+            api_key,
+            args.org_id.unwrap_or(0),
+        )?)
+    } else {
+        let cred = root_s3::S3Credentials {
+            access_key_id: args.access_key.clone().unwrap(),
+            secret_access_key: args.secret_key.clone().unwrap(),
+            session_token: None,
+            expiration: None,
+            region: "eu".to_string(),
+        };
+
+        Ok(root_s3::Client::new_from_s3_credentials(
+            args.url.clone(),
+            cred,
+        )?)
+    }
+}
+
+#[derive(clap::Args, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct CreateBucketArgs {
-    #[arg(long, short)]
-    pub url: String,
-
     #[arg(long)]
     pub name: String,
-
-    #[arg(long)]
-    pub project: i32,
 }
 
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct DeleteBucketArgs {
-    #[arg(long, short)]
-    pub url: String,
-
     #[arg(long)]
     pub name: String,
-
-    #[arg(long)]
-    pub project: i32,
 }
 
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug)]
 #[command(author, version, about, long_about = None)]
-pub struct ListBucketsArgs {
-    #[arg(long, short)]
-    pub url: String,
+pub struct ListBucketsArgs {}
 
-    #[arg(long)]
-    pub project: i32,
-}
-
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct PutObjectArgs {
-    #[arg(long, short)]
-    pub url: String,
-
     #[arg(long)]
     pub bucket: String,
 
@@ -279,17 +282,11 @@ pub struct PutObjectArgs {
 
     #[arg(long)]
     pub metadata: Option<String>,
-
-    #[arg(long)]
-    pub project: i32,
 }
 
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct GetObjectArgs {
-    #[arg(long, short)]
-    pub url: String,
-
     #[arg(long)]
     pub bucket: String,
 
@@ -298,17 +295,11 @@ pub struct GetObjectArgs {
 
     #[arg(long)]
     pub output: String,
-
-    #[arg(long)]
-    pub project: i32,
 }
 
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct CopyObjectArgs {
-    #[arg(long, short)]
-    pub url: String,
-
     #[arg(long)]
     pub bucket: String,
 
@@ -320,52 +311,31 @@ pub struct CopyObjectArgs {
 
     #[arg(long)]
     pub source_key: String,
-
-    #[arg(long)]
-    pub project: i32,
 }
 
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct DeleteObjectArgs {
-    #[arg(long, short)]
-    pub url: String,
-
     #[arg(long)]
     pub bucket: String,
 
     #[arg(long)]
     pub key: String,
-
-    #[arg(long)]
-    pub project: i32,
 }
 
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct ListObjectArgs {
-    #[arg(long, short)]
-    pub url: String,
-
     #[arg(long)]
     pub bucket: String,
-
-    #[arg(long)]
-    pub project: i32,
 }
 
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct GetHeadObject {
-    #[arg(long, short)]
-    pub url: String,
-
     #[arg(long)]
     pub bucket: String,
 
     #[arg(long)]
     pub key: String,
-
-    #[arg(long)]
-    pub project: i32,
 }
