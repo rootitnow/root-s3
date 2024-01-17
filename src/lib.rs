@@ -16,7 +16,7 @@ use aws_types::{region::Region, sdk_config::SdkConfig};
 use std::collections::HashMap;
 use thiserror::Error;
 
-/// RootS3Client struct represents a client for interacting with the S3 service of root.
+/// `RootS3Client` struct represents a client for interacting with the S3 service of root.
 #[derive(Debug, Clone)]
 pub struct Client {
     /// S3 client from AWS SDK.
@@ -81,7 +81,7 @@ impl Client {
         api_key: impl Into<String>,
         org_id: i32,
     ) -> Result<Self, Error> {
-        let s3_client = get_s3_client(&url.clone().into(), None).map_err(|_| Error::InvalidUrl)?;
+        let s3_client = get_s3_client(&url.into(), None).map_err(|_| Error::InvalidUrl)?;
 
         Ok(Self {
             config: Some(RootConfig {
@@ -97,7 +97,7 @@ impl Client {
         credentials: S3Credentials,
     ) -> Result<Self, Error> {
         let s3_client =
-            get_s3_client(&url.clone().into(), Some(credentials)).map_err(|_| Error::InvalidUrl)?;
+            get_s3_client(&url.into(), Some(credentials)).map_err(|_| Error::InvalidUrl)?;
 
         Ok(Self {
             config: None,
@@ -112,13 +112,11 @@ pub fn get_s3_client(url: &str, credentials: Option<S3Credentials>) -> Result<aw
         None => Credentials::new("", "", None, None, ""),
     };
 
-    let scred = SharedCredentialsProvider::new(cred);
-
     let client = aws_sdk_s3::Client::new(
         &SdkConfig::builder()
             .endpoint_url(url)
             .region(Region::new("eu-central-1"))
-            .credentials_provider(scred)
+            .credentials_provider(SharedCredentialsProvider::new(cred))
             .build(),
     );
 
@@ -221,7 +219,7 @@ impl Client {
             .s3_client
             .copy_object()
             .key(key)
-            .copy_source(format!("{}/{}", target_bucket, target_key))
+            .copy_source(format!("{target_bucket}/{target_key}"))
             .bucket(bucket)
             .customize()
             .mutate_request(move |req| add_root_auth(req, &config, project_id))
@@ -335,12 +333,12 @@ fn add_root_auth(req: &mut Request, config: &Option<RootConfig>, project_id: Opt
     // Add the api key to the headers
     req.headers_mut().append("x-api-key", config.api_key);
 
-    let uri = req.uri().to_string();
-    log::debug!("uri: {:?}", uri);
-    let parts = uri.split('?').collect::<Vec<_>>();
+    let req_uri = req.uri().to_string();
+    log::debug!("uri: {:?}", req_uri);
+    let parts = req_uri.split('?').collect::<Vec<_>>();
     // From splitted req uri, get the base url
-    let part0 = parts[0].to_owned();
-    let (url, _) = part0.rsplit_once('/').unwrap();
+    let base_url = parts[0].to_owned();
+    let (url, _) = base_url.rsplit_once('/').unwrap();
     log::debug!("url: {:?}", url);
 
     let uri_mut = req.uri_mut();
@@ -356,15 +354,15 @@ fn add_root_auth(req: &mut Request, config: &Option<RootConfig>, project_id: Opt
 
     // If the original path contains more than just a slash, add it to the path
     if original_path != *"/" {
-        path += &original_path
+        path += &original_path;
     }
 
     // Construct the new uri with the path and original url (url can contain bucketname)
-    let mut new_uri = format!("{}{}", url, path);
+    let mut new_uri = format!("{url}{path}");
 
     // Put back query if there was one
     if let Some(query) = req.uri_mut().query() {
-        new_uri += &format!("?{}", query);
+        new_uri += &format!("?{query}");
     }
 
     let _ = req.set_uri(new_uri);

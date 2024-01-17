@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::*;
+use clap::{arg, command, Parser};
 use log::debug;
 use std::collections::HashMap;
 use tokio::{fs::File, io::AsyncReadExt};
@@ -51,26 +51,27 @@ pub enum SubCommand {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> std::io::Result<()> {
     env_logger::init();
     debug!("cli started");
     let args: S3Cli = S3Cli::parse();
 
-    let client = get_client(&args).await.expect("Error creating client");
+    let client = get_client(&args).expect("Error creating client");
 
     match args.command {
         SubCommand::CreateBucket(CreateBucketArgs { name }) => {
             let res = client.create_bucket(&name, args.project_id).await;
             match res {
-                Ok(_) => println!("Bucket created: {:?}", name),
-                Err(e) => eprintln!("Error creating bucket: {:?}", e),
+                Ok(_) => println!("Bucket created: {name:?}"),
+                Err(e) => eprintln!("Error creating bucket: {e:?}"),
             }
         }
         SubCommand::DeleteBucket(DeleteBucketArgs { name }) => {
             let res = client.delete_bucket(&name, args.project_id).await;
             match res {
-                Ok(_) => println!("Bucket deleted: {:?}", name),
-                Err(e) => eprintln!("Error deleting bucket: {:?}", e),
+                Ok(_) => println!("Bucket deleted: {name:?}"),
+                Err(e) => eprintln!("Error deleting bucket: {e:?}"),
             }
         }
         SubCommand::ListBuckets(ListBucketsArgs {}) => {
@@ -130,7 +131,7 @@ async fn main() -> std::io::Result<()> {
                     r.e_tag.unwrap(),
                     bucket
                 ),
-                Err(e) => eprintln!("Error creating object: {:?}", e),
+                Err(e) => eprintln!("Error creating object: {e:?}"),
             }
         }
         SubCommand::GetObject(GetObjectArgs {
@@ -154,7 +155,7 @@ async fn main() -> std::io::Result<()> {
                         res.content_length.unwrap()
                     );
                 }
-                Err(e) => eprintln!("Error getting object: {:?}", e),
+                Err(e) => eprintln!("Error getting object: {e:?}"),
             }
         }
         SubCommand::CopyObject(CopyObjectArgs {
@@ -169,24 +170,24 @@ async fn main() -> std::io::Result<()> {
 
             match res {
                 Ok(res) => {
-                    println!("{:?}", res);
-                    println!("Object copied: {:?} to bucket {:?}", key, bucket);
+                    println!("{res:?}");
+                    println!("Object copied: {key:?} to bucket {bucket:?}");
                 }
-                Err(e) => eprintln!("Error copying object: {:?}", e),
+                Err(e) => eprintln!("Error copying object: {e:?}"),
             }
         }
         SubCommand::DeleteObject(DeleteObjectArgs { bucket, key }) => {
             let res = client.delete_object(&bucket, &key, args.project_id).await;
             match res {
-                Ok(_) => println!("Object with id '{}' deleted", key),
-                Err(e) => eprintln!("Error deleting object: {:?}", e),
+                Ok(_) => println!("Object with id '{key}' deleted"),
+                Err(e) => eprintln!("Error deleting object: {e:?}"),
             }
         }
         SubCommand::ListObjects(ListObjectArgs { bucket }) => {
             let res = client.list_objects(&bucket, args.project_id).await.unwrap();
 
             if let Some(contents) = res.contents {
-                println!("Objects in bucket '{}'\n", bucket);
+                println!("Objects in bucket '{bucket}'\n");
                 for c in contents {
                     println!(
                         "- Object:\n\tkey: {:?}\n\tupdated at: {:?}\n\tsize: {} bytes",
@@ -197,7 +198,7 @@ async fn main() -> std::io::Result<()> {
                 }
                 println!("\n");
             } else {
-                println!("No objects in bucket '{}'", bucket);
+                println!("No objects in bucket '{bucket}'");
             }
         }
         SubCommand::GetHeadObject(GetHeadObject { bucket, key }) => {
@@ -206,11 +207,11 @@ async fn main() -> std::io::Result<()> {
                 .await
                 .unwrap();
 
-            println!("Object with id '{}' in bucket '{}'\n", key, bucket);
+            println!("Object with id '{key}' in bucket '{bucket}'\n");
             if let Some(meta) = res.metadata {
                 println!("Metadata:");
                 for (k, v) in meta {
-                    println!("\t{}: {}", k, v);
+                    println!("\t{k}: {v}");
                 }
             }
             println!(
@@ -226,7 +227,7 @@ async fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-async fn get_client(args: &S3Cli) -> Result<root_s3::Client> {
+fn get_client(args: &S3Cli) -> Result<root_s3::Client> {
     if let Some(api_key) = &args.api_key {
         Ok(root_s3::Client::new(
             args.url.clone(),

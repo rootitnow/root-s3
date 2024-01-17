@@ -11,20 +11,25 @@ path = "bin/cli.rs"
 name = "root_s3"
 path = "src/lib.rs"
 
+[lints.clippy]
+pedantic = "warn"
+too_many_lines = "allow"
+missing_errors_doc = "allow"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-aws-sdk-s3 = { version = "1.4.0", features = ["behavior-version-latest"] }
-tokio = { version = "1.29.1", features = ["full"] }
+aws-sdk-s3 = { version = "1.4", features = ["behavior-version-latest"] }
+tokio = { version = "1.29", features = ["full"] }
 aws-types = "1.0"
 aws-credential-types = "1.0"
-aws-smithy-runtime-api = "1.0.2"
+aws-smithy-runtime-api = "1.0"
 http = "1"
 hyper = "1"
 anyhow = "1.0"
 clap = { version = "4.4", features = ["derive"] }
 env_logger = "0.10"
 log = "0.4"
-bytes = "1.5.0"
-tokio-stream = { version = "0.1.14", features = ["full"] }
-thiserror = "1.0.50"
+bytes = "1.5"
+tokio-stream = { version = "0.1", features = ["full"] }
+thiserror = "1.0"
