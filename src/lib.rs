@@ -277,6 +277,7 @@ impl Client {
     pub async fn list_objects(
         &self,
         bucket: &str,
+        prefix: &str,
         project_id: Option<i32>,
     ) -> Result<ListObjectsV2Output, Error> {
         let config = self.config.clone();
@@ -285,6 +286,7 @@ impl Client {
             .s3_client
             .list_objects_v2()
             .bucket(bucket)
+            .prefix(prefix)
             .customize()
             .mutate_request(move |req| add_root_auth(req, &config, project_id))
             .send()
