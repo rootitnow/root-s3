@@ -218,9 +218,9 @@ impl Client {
         let res = self
             .s3_client
             .copy_object()
-            .key(key)
-            .copy_source(format!("{target_bucket}/{target_key}"))
-            .bucket(bucket)
+            .key(target_key)
+            .copy_source(format!("{bucket}/{key}"))
+            .bucket(target_bucket)
             .customize()
             .mutate_request(move |req| add_root_auth(req, &config, project_id))
             .send()
