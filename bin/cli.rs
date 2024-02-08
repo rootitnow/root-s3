@@ -183,8 +183,11 @@ async fn main() -> std::io::Result<()> {
                 Err(e) => eprintln!("Error deleting object: {e:?}"),
             }
         }
-        SubCommand::ListObjects(ListObjectArgs { bucket }) => {
-            let res = client.list_objects(&bucket, args.project_id).await.unwrap();
+        SubCommand::ListObjects(ListObjectArgs { bucket, prefix }) => {
+            let res = client
+                .list_objects(&bucket, &prefix, args.project_id)
+                .await
+                .unwrap();
 
             if let Some(contents) = res.contents {
                 println!("Objects in bucket '{bucket}'\n");
@@ -328,6 +331,8 @@ pub struct DeleteObjectArgs {
 pub struct ListObjectArgs {
     #[arg(long)]
     pub bucket: String,
+    #[arg(long)]
+    pub prefix: String,
 }
 
 #[derive(clap::Args, Debug)]
