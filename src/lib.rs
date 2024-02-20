@@ -297,7 +297,7 @@ impl Client {
     }
 
     pub async fn head_object(
-        self,
+        &self,
         bucket: &str,
         key: &str,
         project_id: Option<i32>,
