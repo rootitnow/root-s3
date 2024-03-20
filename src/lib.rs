@@ -115,7 +115,7 @@ pub fn get_s3_client(url: &str, credentials: Option<S3Credentials>) -> Result<aw
     let client = aws_sdk_s3::Client::new(
         &SdkConfig::builder()
             .endpoint_url(url)
-            .region(Region::new("eu-central-1"))
+            .region(Region::new("weur"))
             .credentials_provider(SharedCredentialsProvider::new(cred))
             .build(),
     );
