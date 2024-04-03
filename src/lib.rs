@@ -150,7 +150,7 @@ impl Client {
             .semaphore
             .acquire()
             .await
-            .map_err(|e| Error::SemaphoreError(e))?;
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
@@ -176,7 +176,7 @@ impl Client {
             .semaphore
             .acquire()
             .await
-            .map_err(|e| Error::SemaphoreError(e))?;
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
@@ -198,7 +198,7 @@ impl Client {
             .semaphore
             .acquire()
             .await
-            .map_err(|e| Error::SemaphoreError(e))?;
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
@@ -226,7 +226,7 @@ impl Client {
             .semaphore
             .acquire()
             .await
-            .map_err(|e| Error::SemaphoreError(e))?;
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
@@ -258,7 +258,7 @@ impl Client {
             .semaphore
             .acquire()
             .await
-            .map_err(|e| Error::SemaphoreError(e))?;
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
@@ -287,7 +287,7 @@ impl Client {
             .semaphore
             .acquire()
             .await
-            .map_err(|e| Error::SemaphoreError(e))?;
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
@@ -315,7 +315,7 @@ impl Client {
             .semaphore
             .acquire()
             .await
-            .map_err(|e| Error::SemaphoreError(e))?;
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
@@ -343,7 +343,7 @@ impl Client {
             .semaphore
             .acquire()
             .await
-            .map_err(|e| Error::SemaphoreError(e))?;
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
@@ -371,7 +371,7 @@ impl Client {
             .semaphore
             .acquire()
             .await
-            .map_err(|e| Error::SemaphoreError(e))?;
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
