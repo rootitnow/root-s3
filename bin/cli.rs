@@ -236,6 +236,7 @@ fn get_client(args: &S3Cli) -> Result<root_s3::Client> {
             args.url.clone(),
             api_key,
             args.org_id.unwrap_or(0),
+            None,
         )?)
     } else {
         let cred = root_s3::S3Credentials {
