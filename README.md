@@ -1,6 +1,6 @@
 # S3 Cli
 
-![build status](https://github.com/rootitnow/root-s3/actions/workflows/main.yaml/badge.svg)
+![build status](https://github.com/rootitnow/root-s3/actions/workflows/ci.yaml/badge.svg)
 
 ## Requirements
 
