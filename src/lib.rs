@@ -1,18 +1,15 @@
 use anyhow::Result;
 use aws_credential_types::{provider::SharedCredentialsProvider, Credentials};
-use aws_sdk_s3::{
-    error::ErrorMetadata,
-    operation::{
-        copy_object::{CopyObjectError, CopyObjectOutput},
-        create_bucket::{CreateBucketError, CreateBucketOutput},
-        delete_bucket::{DeleteBucketError, DeleteBucketOutput},
-        delete_object::{DeleteObjectError, DeleteObjectOutput},
-        get_object::{GetObjectError, GetObjectOutput},
-        head_object::{HeadObjectError, HeadObjectOutput},
-        list_buckets::{ListBucketsError, ListBucketsOutput},
-        list_objects_v2::{ListObjectsV2Error, ListObjectsV2Output},
-        put_object::{PutObjectError, PutObjectOutput},
-    },
+use aws_sdk_s3::operation::{
+    copy_object::{CopyObjectError, CopyObjectOutput},
+    create_bucket::{CreateBucketError, CreateBucketOutput},
+    delete_bucket::{DeleteBucketError, DeleteBucketOutput},
+    delete_object::{DeleteObjectError, DeleteObjectOutput},
+    get_object::{GetObjectError, GetObjectOutput},
+    head_object::{HeadObjectError, HeadObjectOutput},
+    list_buckets::{ListBucketsError, ListBucketsOutput},
+    list_objects_v2::{ListObjectsV2Error, ListObjectsV2Output},
+    put_object::{PutObjectError, PutObjectOutput},
 };
 use aws_smithy_runtime_api::http::Request;
 use aws_types::{region::Region, sdk_config::SdkConfig};
@@ -20,7 +17,6 @@ use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Semaphore;
 
-// TODO add as env var
 pub const MAX_CONCURRENT: usize = 50;
 
 /// `RootS3Client` struct represents a client for interacting with the S3 service of root.
@@ -92,6 +88,7 @@ impl Client {
         url: impl Into<String> + Clone,
         api_key: impl Into<String>,
         org_id: i32,
+        concurrency_limit: Option<usize>,
     ) -> Result<Self, Error> {
         let s3_client = get_s3_client(&url.into(), None).map_err(|_| Error::InvalidUrl)?;
 
@@ -101,7 +98,11 @@ impl Client {
                 org_id,
             }),
             s3_client,
-            semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT)),
+            semaphore: Arc::new(Semaphore::new(if let Some(limit) = concurrency_limit {
+                limit
+            } else {
+                MAX_CONCURRENT
+            })),
         })
     }
 
