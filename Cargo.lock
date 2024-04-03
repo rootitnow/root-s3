@@ -948,16 +948,13 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.0.1"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "403f9214f3e703236b221f1a9cd88ec8b4adfa5296de01ab96216361f4692f56"
+checksum = "186548d73ac615b32a73aafe38fb4f56c0d340e110e5a200bcadbaf2e199263a"
 dependencies = [
  "bytes",
- "futures-channel",
- "futures-util",
  "http 1.0.0",
  "http-body 1.0.0",
- "pin-project-lite",
  "tokio",
 ]
 
@@ -1367,7 +1364,7 @@ dependencies = [
  "clap",
  "env_logger",
  "http 1.0.0",
- "hyper 1.0.1",
+ "hyper 1.2.0",
  "log",
  "thiserror",
  "tokio",
