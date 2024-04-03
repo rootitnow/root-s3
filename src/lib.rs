@@ -19,7 +19,9 @@ use aws_types::{region::Region, sdk_config::SdkConfig};
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Semaphore;
-pub const MAX_CONCURRENT: usize = 20;
+
+// TODO add as env var
+pub const MAX_CONCURRENT: usize = 50;
 
 /// `RootS3Client` struct represents a client for interacting with the S3 service of root.
 #[derive(Debug, Clone)]
