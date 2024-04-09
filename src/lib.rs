@@ -13,8 +13,11 @@ use aws_sdk_s3::operation::{
 };
 use aws_smithy_runtime_api::http::Request;
 use aws_types::{region::Region, sdk_config::SdkConfig};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
+use tokio::sync::Semaphore;
+
+pub const MAX_CONCURRENT: usize = 50;
 
 /// `RootS3Client` struct represents a client for interacting with the S3 service of root.
 #[derive(Debug, Clone)]
@@ -24,6 +27,9 @@ pub struct Client {
 
     /// Optional root config.
     pub config: Option<RootConfig>,
+
+    /// Limit concurrent requests to S3.
+    pub semaphore: Arc<Semaphore>,
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +60,8 @@ pub enum Error {
     ErrDeleteObject(Box<DeleteObjectError>),
     #[error("Failed to list objects: {0}")]
     ErrListObjects(Box<ListObjectsV2Error>),
+    #[error("Failed to acquire semaphore: {0}")]
+    SemaphoreError(#[from] tokio::sync::AcquireError),
 }
 
 pub struct S3Credentials {
@@ -80,6 +88,7 @@ impl Client {
         url: impl Into<String> + Clone,
         api_key: impl Into<String>,
         org_id: i32,
+        concurrency_limit: Option<usize>,
     ) -> Result<Self, Error> {
         let s3_client = get_s3_client(&url.into(), None).map_err(|_| Error::InvalidUrl)?;
 
@@ -89,6 +98,11 @@ impl Client {
                 org_id,
             }),
             s3_client,
+            semaphore: Arc::new(Semaphore::new(if let Some(limit) = concurrency_limit {
+                limit
+            } else {
+                MAX_CONCURRENT
+            })),
         })
     }
 
@@ -102,6 +116,7 @@ impl Client {
         Ok(Self {
             config: None,
             s3_client,
+            semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT)),
         })
     }
 }
@@ -131,6 +146,12 @@ impl Client {
     ) -> Result<CreateBucketOutput, Error> {
         let config = self.config.clone();
 
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(Error::SemaphoreError)?;
+
         let res = self
             .s3_client
             .create_bucket()
@@ -151,6 +172,12 @@ impl Client {
     ) -> Result<DeleteBucketOutput, Error> {
         let config = self.config.clone();
 
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(Error::SemaphoreError)?;
+
         let res = self
             .s3_client
             .delete_bucket()
@@ -166,6 +193,12 @@ impl Client {
 
     pub async fn list_buckets(&self, project_id: Option<i32>) -> Result<ListBucketsOutput, Error> {
         let config = self.config.clone();
+
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
@@ -188,6 +221,12 @@ impl Client {
         metadata: Option<HashMap<String, String>>,
     ) -> Result<PutObjectOutput, Error> {
         let config = self.config.clone();
+
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
@@ -215,6 +254,12 @@ impl Client {
     ) -> Result<CopyObjectOutput, Error> {
         let config = self.config.clone();
 
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(Error::SemaphoreError)?;
+
         let res = self
             .s3_client
             .copy_object()
@@ -238,6 +283,12 @@ impl Client {
     ) -> Result<GetObjectOutput, Error> {
         let config = self.config.clone();
 
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(Error::SemaphoreError)?;
+
         let res = self
             .s3_client
             .get_object()
@@ -259,6 +310,12 @@ impl Client {
         project_id: Option<i32>,
     ) -> Result<DeleteObjectOutput, Error> {
         let config = self.config.clone();
+
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
@@ -282,6 +339,12 @@ impl Client {
     ) -> Result<ListObjectsV2Output, Error> {
         let config = self.config.clone();
 
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(Error::SemaphoreError)?;
+
         let res = self
             .s3_client
             .list_objects_v2()
@@ -303,6 +366,12 @@ impl Client {
         project_id: Option<i32>,
     ) -> Result<HeadObjectOutput, Error> {
         let config = self.config.clone();
+
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(Error::SemaphoreError)?;
 
         let res = self
             .s3_client
