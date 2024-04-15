@@ -18,7 +18,7 @@ missing_errors_doc = "allow"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-aws-sdk-s3 = { version = "1.21", features = ["behavior-version-latest"] }
+aws-sdk-s3 = { version = "1.22", features = ["behavior-version-latest"] }
 tokio = { version = "1.37", features = ["full"] }
 aws-types = "1.1"
 aws-credential-types = "1.1"
